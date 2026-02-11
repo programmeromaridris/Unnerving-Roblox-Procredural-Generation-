@@ -1,0 +1,122 @@
+-- // ===========
+
+-- ===============
+-- Part Config
+-- ================
+local SEGMENT_SIZE = Vector3.new(8, 8, 10) -- size of the part
+local SEGMENT_OFFSET = CFrame.new(0, 0, -SEGMENT_SIZE.Z) -- moves the next part forward by its length
+
+-- =================
+-- Map Config
+-- ================
+local MAP_SIZE = 1000 -- how far the map extends in each direction
+local SPACING = 500 -- the space between each worm
+
+
+-- ======================
+-- Branch Config
+-- ======================
+local MAX_GENERATIONS = 16 -- how many times it'll split
+local BRANCH_LENGTH = 14 -- how many parts exist in one "worm" before it splits
+local WOBBLE_INTENSITY = 20 -- degrees of random rotation while moving straight (so it doesnt look like a linear line)
+local SPLIT_ANGLE = math.noise(20, 75) -- the degrees it turns when splitting
+local SURVIVAL_CHANCE = 0.86 -- the chance for a branch to survive
+local DOUBLE_CHANCE = 0.6 -- the chance for it to spawn two branches
+
+
+
+
+-- // ==============
+-- Helper functions
+local function getWobble()
+	local r = math.rad -- convert degrees to radians for cframe angles
+	
+	-- random number between -wobble and +wobble
+	local randomY = r(math.random(-WOBBLE_INTENSITY, WOBBLE_INTENSITY))
+	local randomX = r(math.random(-WOBBLE_INTENSITY, WOBBLE_INTENSITY)) 
+	
+	return CFrame.Angles(randomX, randomY, 0)
+end
+
+
+-- // ============================
+
+local function GenerateBranch(startCFrame, gen)
+	if gen <= 0 then return end
+	
+	local currentCFrame = startCFrame
+	
+	-- generate the worm 
+	for i = 1, BRANCH_LENGTH do
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = SEGMENT_SIZE
+		part.CFrame = currentCFrame
+		part.Color = Color3.fromRGB(155, 155 ,155)
+		part.Parent = workspace
+		
+		currentCFrame = currentCFrame * SEGMENT_OFFSET * getWobble()
+		task.wait(0.2)
+		
+		if i % 2 == 0 then task.wait() end -- yield every two parts for performance
+	end
+	
+	local function getRandomTurn(directionMultiplier) -- small helper function
+		return CFrame.Angles(0, math.rad(SPLIT_ANGLE * directionMultiplier), 0)
+	end
+	
+	-- if we roll a number higher than the survival chance, that branch becomes a dead end
+	if math.random() > SURVIVAL_CHANCE then
+		return
+	end
+	
+	-- deciding how many children to spawn
+	local spawnCount = 1
+	if math.random() <= DOUBLE_CHANCE then
+		spawnCount = 2
+	end
+	
+	for i = 1, spawnCount do
+		task.spawn(function()
+			
+			local direction = 1
+			
+			-- if spawning two, force one left and the other right
+			if spawnCount == 2 then
+				if i == 1 then direction = 1 else direction = -1
+				
+				end
+			else -- else if its 1
+				direction = (math.random(1, 2) == 1) and 1 or -1
+			end
+			
+			local turnCFrame = getRandomTurn(direction)
+			
+			-- recurse with slight generation penalty
+			GenerateBranch(currentCFrame * turnCFrame, gen - 1)
+		end)
+	end
+	
+end
+
+
+for x = -MAP_SIZE, MAP_SIZE, SPACING do
+	-- iterate z from -1000 to 1000, stepping by 500
+	for z = -MAP_SIZE, MAP_SIZE, SPACING do
+		
+		-- create the position
+		local position = Vector3.new(x, 0, z)
+		
+		-- randomize the rotation so they dont all look identical
+		local randomYRot = math.rad(math.random(0, 360))
+		local startCFrame = CFrame.new(position) * CFrame.Angles(0, randomYRot, 0)
+		
+		-- fire the generator
+		task.spawn(function()
+			GenerateBranch(startCFrame, MAX_GENERATIONS)
+		end)
+		task.wait(0.5)
+	end
+end
+
+
